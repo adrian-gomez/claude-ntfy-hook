@@ -1,0 +1,826 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Approve Claude Code permission prompts from your phone · claude-ntfy-hook</title>
+<meta name="description" content="claude-ntfy-hook is a drop-in Claude Code PermissionRequest hook that pushes pending tool calls to your phone via ntfy. Tap Allow or Deny remotely — fills the gap left by Claude Code Remote Control, which mirrors sessions read-only and can't approve permission prompts on mobile." />
+<meta name="keywords" content="claude code, claude code remote control, claude code permission prompts, claude code mobile, claude code phone, claude code hooks, ntfy, anthropic claude, claude code android, claude code ios, permissionrequest hook" />
+<meta name="author" content="Adrian Gomez" />
+<meta name="robots" content="index, follow" />
+<link rel="canonical" href="https://adrian-gomez.github.io/claude-ntfy-hook/" />
+
+<meta property="og:title" content="Approve Claude Code permission prompts from your phone" />
+<meta property="og:description" content="A drop-in Claude Code hook that pushes pending tool calls to your phone via ntfy. Tap Allow or Deny remotely. Fills the gap Claude Code Remote Control leaves open on mobile." />
+<meta property="og:image" content="https://adrian-gomez.github.io/claude-ntfy-hook/phone-notification.jpg" />
+<meta property="og:image:alt" content="ntfy notification on Android with Allow and Deny action buttons for a Claude Code permission request" />
+<meta property="og:url" content="https://adrian-gomez.github.io/claude-ntfy-hook/" />
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="claude-ntfy-hook" />
+
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Approve Claude Code permission prompts from your phone" />
+<meta name="twitter:description" content="A drop-in Claude Code hook that routes permission prompts to your phone via ntfy. Tap Allow or Deny remotely." />
+<meta name="twitter:image" content="https://adrian-gomez.github.io/claude-ntfy-hook/phone-notification.jpg" />
+
+<meta name="theme-color" content="#0d0a08" />
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareSourceCode",
+  "name": "claude-ntfy-hook",
+  "headline": "Approve Claude Code permission prompts from your phone",
+  "description": "A Claude Code PermissionRequest hook that pushes pending tool calls to your phone via ntfy. Tap Allow or Deny remotely — fills the gap Claude Code Remote Control leaves open by surfacing permission prompts on mobile.",
+  "url": "https://adrian-gomez.github.io/claude-ntfy-hook/",
+  "codeRepository": "https://github.com/adrian-gomez/claude-ntfy-hook",
+  "programmingLanguage": "Python",
+  "runtimePlatform": "Claude Code",
+  "license": "https://opensource.org/licenses/MIT",
+  "author": {
+    "@type": "Person",
+    "name": "Adrian Gomez",
+    "url": "https://github.com/adrian-gomez"
+  },
+  "keywords": "claude code, claude code remote control, permission prompts, mobile approval, ntfy, claude code hooks, PermissionRequest"
+}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --bg:        #0d0a08;
+    --bg-2:      #15110d;
+    --bg-3:      #1c1712;
+    --fg:        #f0e3c4;
+    --fg-dim:    #8c8170;
+    --fg-mute:   #5a5247;
+    --rule:      #2a221b;
+    --rule-2:    #3a2f24;
+    --accent:    #e87a39;
+    --accent-2:  #ffaa66;
+    --ok:        #7eb38a;
+    --no:        #c46556;
+    --maxw:      1180px;
+    --pad:       clamp(1.25rem, 4vw, 3rem);
+    --mono:      'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html { font-size: 15px; scroll-behavior: smooth; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--mono);
+    font-weight: 400;
+    line-height: 1.55;
+    font-feature-settings: "ss01", "calt";
+    background-image:
+      radial-gradient(900px 420px at 60% -10%, rgba(232, 122, 57, 0.085), transparent 65%),
+      repeating-linear-gradient(0deg, rgba(0,0,0,0) 0 2px, rgba(255,255,255,0.012) 2px 3px);
+    background-attachment: fixed;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  ::selection { background: var(--accent); color: var(--bg); }
+
+  a { color: var(--accent); text-decoration: none; transition: color 0.15s; }
+  a:hover { color: var(--accent-2); }
+
+  hr {
+    border: 0;
+    border-top: 1px dashed var(--rule);
+    margin: 4rem 0;
+  }
+
+  .wrap {
+    max-width: var(--maxw);
+    margin: 0 auto;
+    padding-left: var(--pad);
+    padding-right: var(--pad);
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* TOP BAR                                                           */
+  /* ---------------------------------------------------------------- */
+  header.top {
+    border-bottom: 1px dashed var(--rule);
+    padding-top: 1.2rem;
+    padding-bottom: 1.2rem;
+    font-size: 0.82rem;
+  }
+  .top-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    letter-spacing: 0.02em;
+    font-weight: 600;
+  }
+  .brand .prompt {
+    color: var(--accent);
+    animation: caretBlink 1.4s steps(2) infinite;
+  }
+  @keyframes caretBlink { 50% { opacity: 0.25; } }
+
+  nav.top-nav {
+    display: flex;
+    gap: 1.6rem;
+    color: var(--fg-dim);
+  }
+  nav.top-nav a { color: inherit; }
+  nav.top-nav a:hover { color: var(--fg); }
+
+  /* ---------------------------------------------------------------- */
+  /* HERO                                                              */
+  /* ---------------------------------------------------------------- */
+  .hero { padding: 4rem 0 1rem; }
+
+  .meta-line {
+    display: flex;
+    gap: 1.2rem;
+    flex-wrap: wrap;
+    color: var(--fg-mute);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    margin-bottom: 1.5rem;
+  }
+  .meta-line span::before { content: '// '; color: var(--rule-2); }
+  .meta-line span:first-child::before { content: ''; }
+
+  h1.title {
+    font-size: clamp(2rem, 5.6vw, 3.6rem);
+    font-weight: 600;
+    line-height: 1.04;
+    letter-spacing: -0.018em;
+    margin: 0 0 1.4rem;
+    text-wrap: balance;
+  }
+  h1.title em {
+    font-style: normal;
+    color: var(--accent);
+    position: relative;
+  }
+  h1.title em::after {
+    content: '_';
+    color: var(--accent);
+    margin-left: 1px;
+    animation: caretBlink 1s steps(2) infinite;
+  }
+
+  p.tagline {
+    font-size: clamp(1rem, 1.6vw, 1.18rem);
+    color: var(--fg-dim);
+    max-width: 62ch;
+    margin: 0 0 2.4rem;
+    line-height: 1.6;
+  }
+  p.tagline strong { color: var(--fg); font-weight: 500; }
+
+  /* ---------------------------------------------------------------- */
+  /* PROTOCOL DEMO (terminal + phone)                                  */
+  /* ---------------------------------------------------------------- */
+  .demo {
+    display: grid;
+    grid-template-columns: 1.45fr 1fr;
+    gap: clamp(1.2rem, 2.4vw, 2.4rem);
+    align-items: stretch;
+    margin-top: 2rem;
+  }
+  @media (max-width: 860px) { .demo { grid-template-columns: 1fr; } }
+
+  .panel {
+    background: var(--bg-2);
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    overflow: hidden;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.018) inset, 0 24px 60px -28px rgba(0,0,0,0.6);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .panel-head {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.55rem 0.95rem;
+    border-bottom: 1px dashed var(--rule);
+    font-size: 0.7rem;
+    color: var(--fg-mute);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .panel-head .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--rule-2);
+  }
+  .panel-head .dot.live {
+    background: var(--accent);
+    box-shadow: 0 0 8px rgba(232, 122, 57, 0.7);
+    animation: pulse 2.6s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+  .panel-head .name { flex: 1; }
+  .panel-head .step {
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  .terminal-body {
+    padding: 1.3rem 1.4rem;
+    font-size: 0.84rem;
+    line-height: 1.7;
+    flex: 1;
+    min-height: 360px;
+  }
+  .terminal-body .ln {
+    display: block;
+    white-space: pre-wrap;
+    opacity: 0;
+    transform: translateY(2px);
+    animation: typeIn 0.4s ease-out forwards;
+  }
+  @keyframes typeIn { to { opacity: 1; transform: none; } }
+
+  .ln.t1 { animation-delay: 0.15s; }
+  .ln.t2 { animation-delay: 0.55s; }
+  .ln.t3 { animation-delay: 1.05s; }
+  .ln.t4 { animation-delay: 1.55s; }
+  .ln.t5 { animation-delay: 2.10s; }
+  .ln.t6 { animation-delay: 2.65s; }
+  .ln.t7 { animation-delay: 3.20s; }
+  .ln.t8 { animation-delay: 3.75s; }
+
+  .terminal-body .prompt { color: var(--accent); }
+  .terminal-body .user { color: var(--fg); }
+  .terminal-body .tool { color: var(--accent-2); }
+  .terminal-body .muted { color: var(--fg-mute); font-style: italic; }
+  .terminal-body .ok { color: var(--ok); }
+  .terminal-body .no { color: var(--no); }
+  .terminal-body .indent { padding-left: 2ch; }
+  .terminal-body .corner { color: var(--fg-mute); }
+
+  .cursor {
+    display: inline-block;
+    width: 0.55ch; height: 1em;
+    background: var(--accent);
+    vertical-align: text-bottom;
+    animation: caretBlink 1s steps(2) infinite;
+    margin-left: 0.2ch;
+  }
+
+  .phone-panel {
+    display: flex;
+    flex-direction: column;
+  }
+  .phone-frame {
+    flex: 1;
+    padding: 1.2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background:
+      radial-gradient(60% 70% at 50% 30%, rgba(232,122,57,0.06), transparent 75%),
+      var(--bg-2);
+  }
+  .phone-frame img {
+    max-width: 100%;
+    max-height: 480px;
+    height: auto;
+    width: auto;
+    border-radius: 6px;
+    border: 1px solid var(--rule-2);
+    box-shadow: 0 24px 60px -20px rgba(0,0,0,0.7);
+    display: block;
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* FLOW LEDGER (under demo)                                          */
+  /* ---------------------------------------------------------------- */
+  .flow {
+    margin: 2.4rem 0 0;
+    padding: 1.1rem 1.3rem;
+    border: 1px dashed var(--rule);
+    border-radius: 2px;
+    color: var(--fg-dim);
+    font-size: 0.82rem;
+    line-height: 1.85;
+    overflow-x: auto;
+  }
+  .flow .step-num {
+    color: var(--accent);
+    font-weight: 600;
+    margin-right: 0.5rem;
+  }
+  .flow .arrow { color: var(--accent); }
+  .flow .note { color: var(--fg-mute); }
+
+  /* ---------------------------------------------------------------- */
+  /* SECTION HEADINGS                                                  */
+  /* ---------------------------------------------------------------- */
+  section { padding: 5rem 0 1rem; }
+  section h2 {
+    font-size: 1.05rem;
+    font-weight: 600;
+    margin: 0 0 0.5rem;
+    letter-spacing: 0.02em;
+    color: var(--fg);
+  }
+  section h2::before {
+    content: '> ';
+    color: var(--accent);
+  }
+  section .lede {
+    color: var(--fg-dim);
+    max-width: 64ch;
+    margin: 0 0 2.5rem;
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* INSTALL                                                           */
+  /* ---------------------------------------------------------------- */
+  .steps { display: grid; gap: 1.6rem; }
+  .step {
+    display: grid;
+    grid-template-columns: 2.4rem 1fr;
+    gap: 1.2rem;
+    align-items: start;
+  }
+  .step-marker {
+    width: 2.2rem; height: 2.2rem;
+    border: 1px solid var(--rule-2);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--accent);
+    font-size: 0.78rem;
+    font-weight: 600;
+    margin-top: 0.15rem;
+  }
+  .step h3 {
+    margin: 0 0 0.5rem;
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: var(--fg);
+  }
+  .step p {
+    margin: 0 0 0.8rem;
+    color: var(--fg-dim);
+    font-size: 0.9rem;
+  }
+  .step p code {
+    color: var(--fg);
+    background: var(--bg-2);
+    padding: 0.1rem 0.4rem;
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    font-size: 0.85em;
+  }
+
+  pre.codebox {
+    background: var(--bg-2);
+    border: 1px solid var(--rule);
+    border-left: 2px solid var(--accent);
+    padding: 0.95rem 1.1rem;
+    border-radius: 2px;
+    font-size: 0.83rem;
+    line-height: 1.6;
+    overflow-x: auto;
+    margin: 0;
+    position: relative;
+    font-family: var(--mono);
+  }
+  pre.codebox .copy-btn {
+    position: absolute;
+    top: 0.45rem;
+    right: 0.45rem;
+    background: var(--bg);
+    border: 1px solid var(--rule-2);
+    color: var(--fg-dim);
+    font-family: var(--mono);
+    font-size: 0.66rem;
+    letter-spacing: 0.12em;
+    padding: 0.28rem 0.6rem;
+    cursor: pointer;
+    text-transform: uppercase;
+    border-radius: 1px;
+    transition: all 0.15s;
+  }
+  pre.codebox .copy-btn:hover { color: var(--accent); border-color: var(--accent); }
+  pre.codebox .copy-btn.copied { color: var(--ok); border-color: var(--ok); }
+  pre.codebox code { color: inherit; }
+  pre.codebox .c-comment { color: var(--fg-mute); }
+  pre.codebox .c-key { color: var(--accent-2); }
+  pre.codebox .c-str { color: var(--ok); }
+
+  /* ---------------------------------------------------------------- */
+  /* BEHAVIOR MATRIX                                                   */
+  /* ---------------------------------------------------------------- */
+  .matrix {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    border: 1px solid var(--rule);
+    background: var(--bg-2);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  @media (max-width: 700px) { .matrix { grid-template-columns: 1fr; } }
+  .matrix .cell {
+    padding: 1.4rem 1.5rem;
+    border-bottom: 1px dashed var(--rule);
+    border-right: 1px dashed var(--rule);
+  }
+  .matrix .cell:nth-child(2n) { border-right: 0; }
+  .matrix .cell:nth-last-child(-n+2) { border-bottom: 0; }
+  @media (max-width: 700px) {
+    .matrix .cell { border-right: 0; }
+    .matrix .cell:not(:last-child) { border-bottom: 1px dashed var(--rule); }
+  }
+  .matrix .cell .label {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--fg-mute);
+    margin-bottom: 0.55rem;
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+  }
+  .matrix .cell .label::before {
+    content: '';
+    width: 0.45rem; height: 0.45rem;
+    background: var(--rule-2);
+    border-radius: 50%;
+  }
+  .matrix .cell.ok .label::before { background: var(--ok); }
+  .matrix .cell.no .label::before { background: var(--no); }
+  .matrix .cell.fall .label::before { background: var(--accent); }
+
+  .matrix .cell h3 {
+    margin: 0 0 0.4rem;
+    font-size: 1rem;
+    font-weight: 500;
+    color: var(--fg);
+  }
+  .matrix .cell p {
+    margin: 0;
+    color: var(--fg-dim);
+    font-size: 0.88rem;
+    line-height: 1.55;
+  }
+  .matrix .cell p code {
+    color: var(--accent-2);
+    font-size: 0.84em;
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* CTA                                                               */
+  /* ---------------------------------------------------------------- */
+  .cta-row {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-top: 2rem;
+  }
+  .repo-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 0.95rem 1.6rem;
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    font-family: var(--mono);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-size: 0.85rem;
+    transition: all 0.18s ease-out;
+    cursor: pointer;
+  }
+  .repo-cta::before { content: '>'; color: inherit; }
+  .repo-cta:hover {
+    background: var(--accent);
+    color: var(--bg);
+    transform: translate(-1px, -1px);
+    box-shadow: 4px 4px 0 var(--rule-2);
+  }
+  .secondary-link {
+    color: var(--fg-dim);
+    font-size: 0.85rem;
+    border-bottom: 1px dashed var(--rule-2);
+    padding-bottom: 1px;
+  }
+  .secondary-link:hover { color: var(--fg); border-color: var(--fg); }
+
+  /* ---------------------------------------------------------------- */
+  /* FOOTER                                                            */
+  /* ---------------------------------------------------------------- */
+  footer.bottom {
+    border-top: 1px dashed var(--rule);
+    margin-top: 5rem;
+    padding-top: 2rem;
+    padding-bottom: 3rem;
+    color: var(--fg-mute);
+    font-size: 0.78rem;
+  }
+  .foot-inner {
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+    align-items: center;
+  }
+  footer.bottom a { color: var(--fg-dim); }
+  footer.bottom a:hover { color: var(--accent); }
+  footer.bottom .ascii {
+    color: var(--rule-2);
+    user-select: none;
+    letter-spacing: -0.05em;
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* MISC                                                              */
+  /* ---------------------------------------------------------------- */
+  @media (max-width: 600px) {
+    h1.title { font-size: 1.85rem; }
+    .terminal-body { font-size: 0.78rem; padding: 1rem; min-height: 0; }
+    .step { grid-template-columns: 1fr; gap: 0.4rem; }
+    .step-marker { display: none; }
+    nav.top-nav { gap: 1rem; font-size: 0.78rem; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.001s !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001s !important;
+    }
+  }
+</style>
+</head>
+
+<body>
+
+<header class="top">
+  <div class="wrap top-inner">
+    <div class="brand">
+      <span class="prompt">$</span>
+      <span>claude-ntfy-hook</span>
+    </div>
+    <nav class="top-nav">
+      <a href="#why">why</a>
+      <a href="#install">install</a>
+      <a href="#behavior">behavior</a>
+      <a href="https://github.com/adrian-gomez/claude-ntfy-hook">github&nbsp;↗</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+  <!-- ============================================================= -->
+  <!-- HERO                                                           -->
+  <!-- ============================================================= -->
+  <section class="hero wrap">
+    <div class="meta-line">
+      <span>v0.1</span>
+      <span>MIT</span>
+      <span>single file</span>
+      <span>zero deps</span>
+      <span>~140 lines of python</span>
+    </div>
+
+    <h1 class="title">
+      Approve Claude Code prompts<br>
+      <em>from your phone</em>
+    </h1>
+
+    <p class="tagline">
+      A <strong>PermissionRequest</strong> hook that pushes pending tool calls to your phone via
+      <a href="https://ntfy.sh">ntfy</a>. <strong>Tap Allow</strong> and the harness skips the local prompt.
+      <strong>Tap Deny</strong> and the call is rejected. <strong>Don't tap</strong> &mdash; the local terminal prompt fires
+      as if no hook existed. Worst case it's a no-op.
+    </p>
+
+    <!-- ====================== Protocol Demo ====================== -->
+    <div class="demo">
+      <!-- Left: terminal -->
+      <div class="panel">
+        <div class="panel-head">
+          <span class="dot live"></span>
+          <span class="name">claude · zsh</span>
+          <span class="step">step 1 / 3</span>
+        </div>
+        <div class="terminal-body" aria-label="claude terminal session">
+<span class="ln t1"><span class="prompt">&gt;</span> <span class="user">write the text "ntfy test" to /tmp/claude-ntfy-test.txt</span></span>
+<span class="ln t2"></span>
+<span class="ln t3"><span class="tool">●</span> <span class="tool">Write</span>(/tmp/claude-ntfy-test.txt)</span>
+<span class="ln t4"><span class="indent"><span class="corner">└─</span> <span class="muted">pushing to phone for approval…</span></span></span>
+<span class="ln t5"><span class="indent"><span class="corner">└─</span> <span class="ok">Allowed by PermissionRequest hook</span></span></span>
+<span class="ln t6"><span class="indent"><span class="corner">└─</span> Wrote 1 lines to ../../../tmp/claude-ntfy-test.txt</span></span>
+<span class="ln t7"></span>
+<span class="ln t8"><span class="prompt">&gt;</span> <span class="cursor"></span></span>
+        </div>
+      </div>
+
+      <!-- Right: phone -->
+      <div class="panel phone-panel">
+        <div class="panel-head">
+          <span class="dot"></span>
+          <span class="name">ntfy · android</span>
+          <span class="step">step 2 / 3</span>
+        </div>
+        <div class="phone-frame">
+          <img src="phone-notification.jpg"
+               alt="ntfy notification on Android with Allow and Deny action buttons"
+               width="380" height="740"
+               loading="lazy" decoding="async" />
+        </div>
+      </div>
+    </div>
+
+    <!-- ====================== Flow ledger ====================== -->
+    <div class="flow" aria-label="protocol flow">
+<span class="step-num">[1]</span> Claude Code wants to run a tool      <span class="arrow">→</span>  <span class="note">PermissionRequest event fires</span>
+<span class="step-num">[2]</span> hook publishes to ntfy.sh/&lt;perm-topic&gt; with <span class="arrow">Allow</span> / <span class="arrow">Deny</span> action buttons
+<span class="step-num">[3]</span> you tap on phone                     <span class="arrow">→</span>  hook reads the response, returns decision JSON
+<span class="step-num">[•]</span> <span class="note">no tap within 30s? hook exits silent, native terminal prompt fires.</span>
+    </div>
+  </section>
+
+  <hr>
+
+  <!-- ============================================================= -->
+  <!-- WHY (Remote Control gap)                                       -->
+  <!-- ============================================================= -->
+  <section id="why" class="wrap">
+    <h2>why this exists</h2>
+    <p class="lede" style="margin-bottom: 1.6rem;">Anthropic ships <a href="https://code.claude.com/docs/en/remote-control">Claude Code Remote Control</a>, which mirrors a CLI session to the Claude mobile app or <code>claude.ai/code</code>. It's great for monitoring &mdash; but the docs are explicit that interactive terminal pickers and <strong>permission prompts are local-only</strong>. If your laptop is asking "Allow this <code>Bash</code> call?", you have to walk back to it.</p>
+
+    <blockquote style="margin: 0 0 2rem; padding: 1.2rem 1.4rem; border-left: 2px solid var(--accent); background: var(--bg-2); color: var(--fg-dim); font-size: 0.92rem; line-height: 1.65;">
+      claude-ntfy-hook fills exactly that gap. It hooks into the <code style="color: var(--accent-2);">PermissionRequest</code> event, posts the pending decision to your phone over <a href="https://ntfy.sh">ntfy</a>, and waits for a tap. Allow runs the tool. Deny rejects it. No tap, the regular terminal prompt fires &mdash; the hook is purely additive.
+    </blockquote>
+
+    <p class="lede">Built for engineers running long Claude Code sessions and not wanting to camp the keyboard for every <code>Write</code>, <code>Bash</code>, or destructive call. ~140 lines of Python, no daemon, no server. Public ntfy.sh by default; self-hosted ntfy supported via <code>NTFY_BASE</code> if you'd rather not transit Heckel's servers.</p>
+  </section>
+
+  <hr>
+
+  <!-- ============================================================= -->
+  <!-- INSTALL                                                        -->
+  <!-- ============================================================= -->
+  <section id="install" class="wrap">
+    <h2>install</h2>
+    <p class="lede">Three things to set up: clone the repo, generate two random ntfy topic names, wire the hook into <code>~/.claude/settings.json</code>. The included <code>install.sh</code> handles the first two.</p>
+
+    <div class="steps">
+
+      <div class="step">
+        <div class="step-marker">1</div>
+        <div>
+          <h3>Clone &amp; bootstrap</h3>
+          <p><code>install.sh</code> symlinks the hook into <code>~/.claude/scripts</code>, generates two random topic names, and writes them to <code>.env.topics</code> (gitignored).</p>
+<pre class="codebox" data-copy>git clone https://github.com/adrian-gomez/claude-ntfy-hook.git ~/code/claude-ntfy-hook
+cd ~/code/claude-ntfy-hook
+./install.sh</pre>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-marker">2</div>
+        <div>
+          <h3>Subscribe on your phone</h3>
+          <p>Install <a href="https://f-droid.org/packages/io.heckel.ntfy/">ntfy on Android</a> (or the <a href="https://apps.apple.com/app/ntfy/id1625396347">iOS app</a>), tap Subscribe, paste the <code>NTFY_PERM_TOPIC</code> value from <code>.env.topics</code>, server <code>https://ntfy.sh</code>. Smoke test:</p>
+<pre class="codebox" data-copy>source .env.topics
+curl -d "if you see this, ntfy works" https://ntfy.sh/$NTFY_PERM_TOPIC</pre>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-marker">3</div>
+        <div>
+          <h3>Wire into Claude Code</h3>
+          <p>Source the topics from your shell rc and merge this <code>PermissionRequest</code> entry into <code>~/.claude/settings.json</code> alongside any other hooks you have.</p>
+<pre class="codebox" data-copy>echo '[ -f ~/code/claude-ntfy-hook/.env.topics ] &amp;&amp; source ~/code/claude-ntfy-hook/.env.topics' &gt;&gt; ~/.zshrc</pre>
+<pre class="codebox" data-copy>{
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/scripts/ntfy_permission.py",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  }
+}</pre>
+          <p><span class="muted" style="color: var(--fg-mute);">Open a new terminal so Claude Code inherits the env vars, then ask it to do something a notification-worthy. <code>write "hi" to /tmp/foo</code> works.</span></p>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <hr>
+
+  <!-- ============================================================= -->
+  <!-- BEHAVIOR                                                       -->
+  <!-- ============================================================= -->
+  <section id="behavior" class="wrap">
+    <h2>behavior</h2>
+    <p class="lede">The hook fires only when Claude Code was about to actually prompt you (the <code>PermissionRequest</code> event &mdash; not for every tool call). Auto-allowed patterns and the safe-command classifier stay silent.</p>
+
+    <div class="matrix">
+      <div class="cell ok">
+        <div class="label">tap allow</div>
+        <h3>Tool runs, no local prompt</h3>
+        <p>Hook returns <code>{"behavior": "allow"}</code>. Claude Code records "Allowed by PermissionRequest hook" in the trace and proceeds.</p>
+      </div>
+      <div class="cell no">
+        <div class="label">tap deny</div>
+        <h3>Tool is rejected</h3>
+        <p>Hook returns <code>{"behavior": "deny"}</code>. Claude Code denies the call and surfaces the hook's reason.</p>
+      </div>
+      <div class="cell fall">
+        <div class="label">no tap (timeout)</div>
+        <h3>Native prompt fires</h3>
+        <p>After <code>NTFY_TIMEOUT</code> (default 30s) the hook exits with no output. The harness falls back to the regular terminal prompt as if the hook didn't exist.</p>
+      </div>
+      <div class="cell fall">
+        <div class="label">phone offline / network down</div>
+        <h3>Native prompt fires</h3>
+        <p>Same fall-through path. Publishing to ntfy.sh fails, hook exits 0 silent. Worst case the hook is a no-op &mdash; it never silently blocks a tool call.</p>
+      </div>
+    </div>
+
+    <div class="cta-row">
+      <a class="repo-cta" href="https://github.com/adrian-gomez/claude-ntfy-hook">view source on github</a>
+      <a class="secondary-link" href="https://github.com/adrian-gomez/claude-ntfy-hook/blob/main/README.md">full readme</a>
+    </div>
+  </section>
+
+</main>
+
+<footer class="bottom">
+  <div class="wrap foot-inner">
+    <div>
+      MIT &middot;
+      built on top of <a href="https://ntfy.sh">ntfy</a> +
+      <a href="https://code.claude.com">claude code hooks</a>
+    </div>
+    <div class="ascii">/* ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ */</div>
+    <div>
+      <a href="https://github.com/adrian-gomez/claude-ntfy-hook">source ↗</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+  // Copy-to-clipboard for any <pre class="codebox" data-copy>
+  document.querySelectorAll('pre.codebox[data-copy]').forEach((box) => {
+    const btn = document.createElement('button');
+    btn.className = 'copy-btn';
+    btn.type = 'button';
+    btn.textContent = 'copy';
+    btn.setAttribute('aria-label', 'Copy to clipboard');
+    box.appendChild(btn);
+
+    btn.addEventListener('click', async () => {
+      const txt = box.cloneNode(true);
+      txt.querySelector('.copy-btn')?.remove();
+      try {
+        await navigator.clipboard.writeText(txt.textContent.trim());
+        btn.textContent = 'copied';
+        btn.classList.add('copied');
+        setTimeout(() => {
+          btn.textContent = 'copy';
+          btn.classList.remove('copied');
+        }, 1400);
+      } catch (e) {
+        btn.textContent = 'err';
+        setTimeout(() => { btn.textContent = 'copy'; }, 1400);
+      }
+    });
+  });
+</script>
+
+</body>
+</html>
