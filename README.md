@@ -1,5 +1,8 @@
 # claude-ntfy-hook
 
+[![tests](https://github.com/adrian-gomez/claude-ntfy-hook/actions/workflows/tests.yml/badge.svg)](https://github.com/adrian-gomez/claude-ntfy-hook/actions/workflows/tests.yml)
+[![license](https://img.shields.io/github/license/adrian-gomez/claude-ntfy-hook?color=blue)](LICENSE)
+
 Approve or deny Claude Code permission prompts from your phone.
 
 When Claude Code is about to ask whether it can run a tool (Bash, Write, etc.), this hook publishes a push notification to your phone via [ntfy](https://ntfy.sh) with **Allow** / **Deny** / **Always** action buttons. Tap one and Claude Code skips the local prompt. Don't tap and the local prompt fires as usual — the hook never silently blocks a tool call.
