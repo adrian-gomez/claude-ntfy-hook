@@ -150,12 +150,77 @@ def short_summary(tool_name, tool_input):
 # --------------------------------------------------------------------- #
 
 
+def _is_env_assignment(tok):
+    """True if `tok` looks like a leading shell env-var prefix (FOO=bar)."""
+    if "=" not in tok or tok.startswith("-"):
+        return False
+    key = tok.split("=", 1)[0]
+    if not key or key[0].isdigit():
+        return False
+    return all(c.isalnum() or c == "_" for c in key)
+
+
+def _always_bash_pattern(cmd):
+    """Build a conservative pattern for a Bash command.
+
+    Rules (each row narrower than just `Bash(<binary> *)`):
+      `ls`                            -> Bash(ls)                    # exact
+      `ls -la`                        -> Bash(ls *)                  # only flags after
+      `rm /tmp/foo`                   -> Bash(rm /tmp/*)             # path -> parent dir
+      `rm -rf /tmp/foo`               -> Bash(rm -rf /tmp/*)         # leading flags kept
+      `git push origin main`          -> Bash(git push *)            # subcommand + args
+      `git push --force origin x`     -> Bash(git push *)
+      `git status`                    -> Bash(git status *)          # subcommand alone
+      `cat /etc/passwd`               -> Bash(cat /etc/*)
+      `cat /x`                        -> Bash(cat /x)                # root path -> exact
+      `PATH=/x npm install foo`       -> Bash(PATH=/x npm install *) # env prefix preserved
+    """
+    tokens = cmd.split()
+    if not tokens:
+        return None
+
+    # Consume leading env-var assignments (FOO=bar npm test).
+    env_prefix = []
+    while tokens and _is_env_assignment(tokens[0]):
+        env_prefix.append(tokens.pop(0))
+
+    if not tokens:
+        return None  # all env vars, no binary
+
+    binary = tokens[0]
+    rest = tokens[1:]
+    env_str = (" ".join(env_prefix) + " ") if env_prefix else ""
+
+    if not rest:
+        return f"Bash({env_str}{binary})"
+
+    # Strip leading flags but preserve them in the pattern.
+    flags = []
+    args = list(rest)
+    while args and args[0].startswith("-"):
+        flags.append(args.pop(0))
+
+    flag_str = (" ".join(flags) + " ") if flags else ""
+
+    if not args:
+        return f"Bash({env_str}{binary} *)"
+
+    target = args[0]
+
+    if "/" in target:
+        parent = os.path.dirname(target)
+        if parent and parent != "/":
+            return f"Bash({env_str}{binary} {flag_str}{parent}/*)"
+        return f"Bash({env_str}{binary} {flag_str}{target})"
+
+    return f"Bash({env_str}{binary} {flag_str}{target} *)"
+
+
 def always_pattern(tool_name, tool_input):
     """Build a conservative permissions.allow pattern for the call."""
     if tool_name == "Bash":
         cmd = (tool_input.get("command", "") or "").strip()
-        first = cmd.split()[0] if cmd else ""
-        return f"Bash({first} *)" if first else None
+        return _always_bash_pattern(cmd)
 
     if tool_name in ("Write", "Edit", "MultiEdit"):
         path = tool_input.get("file_path", "") or ""

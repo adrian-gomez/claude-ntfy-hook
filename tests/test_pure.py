@@ -196,13 +196,41 @@ class TestShortSummary:
 
 
 class TestAlwaysPattern:
-    def test_bash_first_word(self):
-        assert np.always_pattern("Bash", {"command": "npm test"}) == "Bash(npm *)"
-
-    def test_bash_command_with_args(self):
-        assert (
-            np.always_pattern("Bash", {"command": "rm -rf /tmp/foo"}) == "Bash(rm *)"
-        )
+    @pytest.mark.parametrize(
+        "cmd, expected",
+        [
+            # bare command, no args at all
+            ("ls", "Bash(ls)"),
+            ("date", "Bash(date)"),
+            # only flags after binary — fall back to wildcard
+            ("ls -la", "Bash(ls *)"),
+            ("git --version", "Bash(git *)"),
+            # path argument: narrow to parent dir
+            ("rm /tmp/foo", "Bash(rm /tmp/*)"),
+            ("cat /etc/passwd", "Bash(cat /etc/*)"),
+            # path with leading flags: keep flags + narrow path
+            ("rm -rf /tmp/foo", "Bash(rm -rf /tmp/*)"),
+            ("rm -r --force /var/cache/x", "Bash(rm -r --force /var/cache/*)"),
+            # path at root: keep exact (do not widen to /*)
+            ("cat /x", "Bash(cat /x)"),
+            # subcommand with more args: <binary> <subcommand> *
+            ("git push origin main", "Bash(git push *)"),
+            ("git push --force origin main", "Bash(git push *)"),
+            ("npm install foo", "Bash(npm install *)"),
+            ("npm run test", "Bash(npm run *)"),
+            ("kubectl get pods", "Bash(kubectl get *)"),
+            # subcommand alone — still wildcard so future variants pass
+            ("git status", "Bash(git status *)"),
+            ("docker ps", "Bash(docker ps *)"),
+            # env-var prefix used by the user's existing settings
+            (
+                "PATH=/foo npm install --prefix /tmp/x",
+                "Bash(PATH=/foo npm install *)",
+            ),
+        ],
+    )
+    def test_bash_patterns(self, cmd, expected):
+        assert np.always_pattern("Bash", {"command": cmd}) == expected
 
     def test_bash_empty_command_returns_none(self):
         assert np.always_pattern("Bash", {"command": "   "}) is None

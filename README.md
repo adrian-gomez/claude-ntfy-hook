@@ -138,11 +138,22 @@ The hook is purely additive: worst case it's a no-op.
 
 ### "Always" pattern construction
 
-When you tap **Always**, the hook writes a conservative glob into `~/.claude/settings.json` `permissions.allow`:
+When you tap **Always**, the hook writes a conservative glob into `~/.claude/settings.json` `permissions.allow`. The Bash rules look at flags, paths, and subcommands separately so the resulting pattern is narrower than just `<binary> *`:
+
+| Command | Pattern | Why |
+|---|---|---|
+| `ls` | `Bash(ls)` | exact match — bare command, no args |
+| `ls -la` | `Bash(ls *)` | only flags follow, fall back to wildcard |
+| `rm /tmp/foo` | `Bash(rm /tmp/*)` | path arg → narrow to parent dir |
+| `rm -rf /tmp/foo` | `Bash(rm -rf /tmp/*)` | leading flags preserved, path narrowed |
+| `git push origin main` | `Bash(git push *)` | subcommand + args → only the subcommand |
+| `git push --force origin main` | `Bash(git push *)` | flags inside the args don't widen the pattern |
+| `git status` | `Bash(git status *)` | subcommand alone, wildcard for future variants |
+| `cat /x` | `Bash(cat /x)` | root path → exact (never widens to `/*`) |
+| `PATH=/x npm install foo` | `Bash(PATH=/x npm install *)` | env-var prefix preserved |
 
 | Tool | Pattern |
 |---|---|
-| `Bash(npm test)` | `Bash(npm *)` (first word of the command + wildcard) |
 | `Edit(/path/to/foo.py, ...)` | `Edit(/path/to/*)` (parent dir + wildcard) |
 | `Write(/x.py, ...)` (root path) | `Write(/x.py)` (exact, never widens to `/*`) |
 | `NotebookEdit(/n.ipynb, ...)` | `NotebookEdit(/n.ipynb)` |

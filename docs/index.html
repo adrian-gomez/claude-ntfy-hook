@@ -762,7 +762,7 @@ curl -d "if you see this, ntfy works" https://ntfy.sh/$NTFY_PERM_TOPIC</pre>
       <div class="cell ok">
         <div class="label">tap always</div>
         <h3>Allow now + auto-approve in future</h3>
-        <p>Hook allows the call AND atomically appends a conservative pattern (e.g. <code>Bash(npm *)</code>, <code>Edit(/path/*)</code>) to <code>~/.claude/settings.json</code> <code>permissions.allow</code>. Future identical patterns won't notify. Audit log at <code>~/.claude/.ntfy_permission.log</code>.</p>
+        <p>Hook allows the call AND atomically appends a conservative pattern to <code>~/.claude/settings.json</code> <code>permissions.allow</code>. Bash patterns narrow by path (<code>rm /tmp/foo</code> → <code>Bash(rm /tmp/*)</code>) or subcommand (<code>git push origin main</code> → <code>Bash(git push *)</code>); Edit/Write narrow to the parent dir. Future identical patterns won't notify. Audit log at <code>~/.claude/.ntfy_permission.log</code>.</p>
       </div>
       <div class="cell fall">
         <div class="label">no tap (timeout)</div>
