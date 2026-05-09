@@ -4,6 +4,10 @@ Approve or deny Claude Code permission prompts from your phone.
 
 When Claude Code is about to ask whether it can run a tool (Bash, Write, etc.), this hook publishes a push notification to your phone via [ntfy](https://ntfy.sh) with **Allow** / **Deny** action buttons. Tap one and Claude Code skips the local prompt. Don't tap and the local prompt fires as usual — the hook never silently blocks a tool call.
 
+<p align="center">
+  <img src="docs/phone-notification.jpg" alt="ntfy notification on Android with Allow/Deny actions" width="360">
+</p>
+
 ```
 Claude Code  ──PermissionRequest──▶  ntfy_permission.py
                                           │
