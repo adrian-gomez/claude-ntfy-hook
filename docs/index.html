@@ -656,7 +656,7 @@
     <!-- ====================== Flow ledger ====================== -->
     <div class="flow" aria-label="protocol flow">
 <span class="step-num">[1]</span> Claude Code wants to run a tool      <span class="arrow">→</span>  <span class="note">PermissionRequest event fires</span>
-<span class="step-num">[2]</span> hook publishes to ntfy.sh/&lt;perm-topic&gt; with <span class="arrow">Allow</span> / <span class="arrow">Deny</span> action buttons
+<span class="step-num">[2]</span> hook publishes to ntfy.sh/&lt;perm-topic&gt; with <span class="arrow">Allow</span> / <span class="arrow">Deny</span> / <span class="arrow">Always</span> action buttons
 <span class="step-num">[3]</span> you tap on phone                     <span class="arrow">→</span>  hook reads the response, returns decision JSON
 <span class="step-num">[•]</span> <span class="note">no tap within 30s? hook exits silent, native terminal prompt fires.</span>
     </div>
@@ -672,7 +672,7 @@
     <p class="lede" style="margin-bottom: 1.6rem;">Anthropic ships <a href="https://code.claude.com/docs/en/remote-control">Claude Code Remote Control</a>, which mirrors a CLI session to the Claude mobile app or <code>claude.ai/code</code>. It's great for monitoring &mdash; but the docs are explicit that interactive terminal pickers and <strong>permission prompts are local-only</strong>. If your laptop is asking "Allow this <code>Bash</code> call?", you have to walk back to it.</p>
 
     <blockquote style="margin: 0 0 2rem; padding: 1.2rem 1.4rem; border-left: 2px solid var(--accent); background: var(--bg-2); color: var(--fg-dim); font-size: 0.92rem; line-height: 1.65;">
-      claude-ntfy-hook fills exactly that gap. It hooks into the <code style="color: var(--accent-2);">PermissionRequest</code> event, posts the pending decision to your phone over <a href="https://ntfy.sh">ntfy</a>, and waits for a tap. Allow runs the tool. Deny rejects it. No tap, the regular terminal prompt fires &mdash; the hook is purely additive.
+      claude-ntfy-hook fills exactly that gap. It hooks into the <code style="color: var(--accent-2);">PermissionRequest</code> event, posts the pending decision to your phone over <a href="https://ntfy.sh">ntfy</a>, and waits for a tap. <strong>Allow</strong> runs the tool. <strong>Deny</strong> rejects it. <strong>Always</strong> runs it AND appends a conservative pattern to your <code style="color: var(--accent-2);">permissions.allow</code> so future identical calls auto-approve. No tap &mdash; the regular terminal prompt fires. Risky-looking commands (<code>rm -rf</code>, <code>git push --force</code>, <code>curl … | sh</code>) get <strong>urgent</strong> priority and a 🚨 tag.
     </blockquote>
 
     <p class="lede">Built for engineers running long Claude Code sessions and not wanting to camp the keyboard for every <code>Write</code>, <code>Bash</code>, or destructive call. ~140 lines of Python, no daemon, no server. Public ntfy.sh by default; self-hosted ntfy supported via <code>NTFY_BASE</code> if you'd rather not transit Heckel's servers.</p>
@@ -759,6 +759,11 @@ curl -d "if you see this, ntfy works" https://ntfy.sh/$NTFY_PERM_TOPIC</pre>
         <h3>Tool is rejected</h3>
         <p>Hook returns <code>{"behavior": "deny"}</code>. Claude Code denies the call and surfaces the hook's reason.</p>
       </div>
+      <div class="cell ok">
+        <div class="label">tap always</div>
+        <h3>Allow now + auto-approve in future</h3>
+        <p>Hook allows the call AND atomically appends a conservative pattern (e.g. <code>Bash(npm *)</code>, <code>Edit(/path/*)</code>) to <code>~/.claude/settings.json</code> <code>permissions.allow</code>. Future identical patterns won't notify. Audit log at <code>~/.claude/.ntfy_permission.log</code>.</p>
+      </div>
       <div class="cell fall">
         <div class="label">no tap (timeout)</div>
         <h3>Native prompt fires</h3>
@@ -768,6 +773,11 @@ curl -d "if you see this, ntfy works" https://ntfy.sh/$NTFY_PERM_TOPIC</pre>
         <div class="label">phone offline / network down</div>
         <h3>Native prompt fires</h3>
         <p>Same fall-through path. Publishing to ntfy.sh fails, hook exits 0 silent. Worst case the hook is a no-op &mdash; it never silently blocks a tool call.</p>
+      </div>
+      <div class="cell">
+        <div class="label">risky command detected</div>
+        <h3>Urgent priority + 🚨 tag</h3>
+        <p>Bash matching <code>rm -rf</code>, <code>git push --force</code>, <code>curl … | sh</code>, <code>sudo</code>, <code>dd if=</code>, <code>mkfs</code>, etc. publishes with <code>Priority: urgent</code> and a <code>rotating_light</code> tag so it cuts through Do Not Disturb on most setups.</p>
       </div>
     </div>
 

@@ -2,7 +2,9 @@
 
 Approve or deny Claude Code permission prompts from your phone.
 
-When Claude Code is about to ask whether it can run a tool (Bash, Write, etc.), this hook publishes a push notification to your phone via [ntfy](https://ntfy.sh) with **Allow** / **Deny** action buttons. Tap one and Claude Code skips the local prompt. Don't tap and the local prompt fires as usual — the hook never silently blocks a tool call.
+When Claude Code is about to ask whether it can run a tool (Bash, Write, etc.), this hook publishes a push notification to your phone via [ntfy](https://ntfy.sh) with **Allow** / **Deny** / **Always** action buttons. Tap one and Claude Code skips the local prompt. Don't tap and the local prompt fires as usual — the hook never silently blocks a tool call.
+
+The notification body shows the tool call summary (Bash command, Edit diff hint, Write content preview, URL for WebFetch/WebSearch), the working dir basename, and an 8-char session ID so you can tell which Claude session is asking when you have several open. Risky-looking commands (`rm -rf`, `git push --force`, `curl ... | sh`, `sudo`, etc.) get an `urgent` priority and 🚨 tag.
 
 <p align="center">
   <img src="docs/phone-notification.jpg" alt="ntfy notification on Android with Allow/Deny actions" width="360">
@@ -124,11 +126,36 @@ The hook sends the tool name, the tool's first input field (the Bash command, th
 |---|---|---|
 | You tap **Allow** | `decision.behavior: "allow"` | Tool runs without local prompt. |
 | You tap **Deny** | `decision.behavior: "deny"` | Tool is denied with the hook reason. |
+| You tap **Always** | `decision.behavior: "allow"` + appends a conservative pattern to `permissions.allow` | Tool runs now. Future identical patterns auto-approve without notifying. Audit trail in `~/.claude/.ntfy_permission.log`. |
 | You don't tap (timeout) | no JSON output | Normal local terminal prompt fires. |
 | ntfy.sh unreachable | exit 0, no output | Normal local terminal prompt fires. |
 | Env vars missing | exit 0, no output | Normal local terminal prompt fires. |
 
 The hook is purely additive: worst case it's a no-op.
+
+### "Always" pattern construction
+
+When you tap **Always**, the hook writes a conservative glob into `~/.claude/settings.json` `permissions.allow`:
+
+| Tool | Pattern |
+|---|---|
+| `Bash(npm test)` | `Bash(npm *)` (first word of the command + wildcard) |
+| `Edit(/path/to/foo.py, ...)` | `Edit(/path/to/*)` (parent dir + wildcard) |
+| `Write(/x.py, ...)` (root path) | `Write(/x.py)` (exact, never widens to `/*`) |
+| `NotebookEdit(/n.ipynb, ...)` | `NotebookEdit(/n.ipynb)` |
+| any other | `<Tool>(*)` |
+
+If you want a different pattern, edit the rule in `permissions.allow` directly afterwards — Claude Code's file watcher reloads the change. The append is atomic (temp file + `os.replace`) so a crashed write can't corrupt your settings.
+
+### Risk-based notification priority
+
+The hook tags commands by risk level:
+
+| Level | ntfy priority | tag | When |
+|---|---|---|---|
+| `urgent` | high alert | 🚨 `rotating_light` | Bash matching `rm -rf`, `git push --force`, `curl ... \| sh`, `sudo`, `dd if=`, `mkfs`, etc. |
+| `high` | normal alert | 🔒 `lock` | Other Bash, `Write`, `Edit`, `NotebookEdit`, `MultiEdit`. |
+| `default` | quieter | ℹ️ `information_source` | Other tools — rare in practice since auto-classified safe tools don't trigger `PermissionRequest`. |
 
 ## License
 
