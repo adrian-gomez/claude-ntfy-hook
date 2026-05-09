@@ -1,0 +1,36 @@
+# Minimal self-hosted ntfy server for claude-ntfy-hook.
+#
+# By default this exposes ntfy on http://<host>:8080 with NO authentication.
+# Only run on a trusted LAN, behind a VPN (e.g. Tailscale), or wire up auth
+# via server.yml — see README.md for the three deployment paths.
+#
+# Usage:
+#   docker compose up -d
+#   curl -d "hello" http://localhost:8080/test
+# then in your shell:
+#   export NTFY_BASE=http://<this-host>:8080
+#   export NTFY_PERM_TOPIC=...
+#   export NTFY_RESP_TOPIC=...
+
+services:
+  ntfy:
+    image: binwiederhier/ntfy:latest
+    container_name: ntfy
+    command:
+      - serve
+      - --config=/etc/ntfy/server.yml
+    volumes:
+      - ./cache:/var/cache/ntfy
+      - ./etc:/etc/ntfy
+      - ./server.yml:/etc/ntfy/server.yml:ro
+    ports:
+      - "8080:80"
+    environment:
+      - TZ=UTC
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --tries=1 -O - http://localhost:80/v1/health | grep -Eo '\"healthy\"\\s*:\\s*true'"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped

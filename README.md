@@ -117,7 +117,7 @@ If `NTFY_PERM_TOPIC` or `NTFY_RESP_TOPIC` is not set, the script exits 0 with no
 
 The hook sends the tool name, the tool's first input field (the Bash command, the Edit/Write file path, etc.), and the basename of `cwd` to ntfy.sh. On public ntfy.sh, this transits Heckel's servers in plaintext. If that's a problem:
 
-- Self-host ntfy ([single-binary, Docker one-liner](https://docs.ntfy.sh/install/)) and point `NTFY_BASE` at it.
+- **Self-host ntfy.** A `docker-compose.yml` and three deployment paths (LAN-only, Tailscale, or public hostname with auth) are in [`selfhost/`](selfhost/README.md). Point `NTFY_BASE` at your server and you're done.
 - Or trim what `short_summary()` includes in `ntfy_permission.py` before publishing.
 
 ## Behavior reference

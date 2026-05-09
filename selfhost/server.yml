@@ -1,0 +1,37 @@
+# ntfy server config — see https://docs.ntfy.sh/config/ for all options.
+#
+# Defaults below are the LAN/private deployment shape. Read the comments
+# and uncomment the auth block for the "public hostname with auth" path.
+
+base-url: "http://localhost:8080"
+
+# Where the message + auth databases live (mounted by docker-compose.yml).
+cache-file: "/var/cache/ntfy/cache.db"
+attachment-cache-dir: "/var/cache/ntfy/attachments"
+auth-file: "/var/cache/ntfy/user.db"
+
+# Default access for unauthenticated requests.
+#   "read-write"  — anyone can publish AND subscribe (LAN-only deployments).
+#   "read-only"   — anyone can subscribe, only authenticated users publish.
+#   "deny-all"    — only authenticated users can do anything.
+auth-default-access: "read-write"
+
+# How long messages are retained server-side.
+cache-duration: "12h"
+
+# Optional: sender behavior.
+behind-proxy: false
+enable-signup: false
+enable-login: false
+enable-reservations: false
+
+# To run this on a public hostname, do all of:
+#   1. Set base-url to your https URL (e.g. https://ntfy.example.com).
+#   2. Switch auth-default-access to "deny-all".
+#   3. After `docker compose up -d`, create a user and grant access:
+#        docker exec -it ntfy ntfy user add --role=admin <name>
+#        docker exec -it ntfy ntfy access <name> "claude-perm-*" rw
+#        docker exec -it ntfy ntfy access <name> "claude-resp-*" rw
+#   4. Generate an access token:
+#        docker exec -it ntfy ntfy token add <name>
+#      and set NTFY_AUTH="Bearer tk_..." in your shell.
