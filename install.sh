@@ -1,44 +1,181 @@
 #!/usr/bin/env bash
-# Bootstrap claude-ntfy-hook: generate topics, symlink the script, print the
-# settings.json snippet to merge by hand. Idempotent.
+# Bootstrap claude-ntfy-hook.
+#
+# Usage:
+#   ./install.sh                # install: symlink hook, generate topics, print next steps
+#   ./install.sh --check        # diagnose current install state without making changes
+#   ./install.sh --reset-topics # regenerate the random topic names (will require resubscribing on phone)
 
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAUDE_DIR="${CLAUDE_HOME:-$HOME/.claude}"
-SCRIPT_LINK="$CLAUDE_DIR/scripts/ntfy_permission.py"
+SCRIPTS_DIR="$CLAUDE_DIR/scripts"
+SCRIPT_LINK="$SCRIPTS_DIR/ntfy_permission.py"
+SCRIPT_SRC="$REPO_DIR/ntfy_permission.py"
 ENV_FILE="$REPO_DIR/.env.topics"
+SETTINGS="$CLAUDE_DIR/settings.json"
 
-mkdir -p "$CLAUDE_DIR/scripts"
+# colors (only if stdout is a tty)
+if [[ -t 1 ]]; then
+  C_OK=$'\033[32m'; C_WARN=$'\033[33m'; C_ERR=$'\033[31m'
+  C_DIM=$'\033[2m'; C_BOLD=$'\033[1m'; C_RST=$'\033[0m'
+else
+  C_OK=''; C_WARN=''; C_ERR=''; C_DIM=''; C_BOLD=''; C_RST=''
+fi
 
-ln -sf "$REPO_DIR/ntfy_permission.py" "$SCRIPT_LINK"
-chmod +x "$REPO_DIR/ntfy_permission.py"
-echo "Symlinked $SCRIPT_LINK -> $REPO_DIR/ntfy_permission.py"
+ok()   { echo "${C_OK}✓${C_RST} $*"; }
+warn() { echo "${C_WARN}!${C_RST} $*"; }
+fail() { echo "${C_ERR}✗${C_RST} $*" >&2; }
+note() { echo "  ${C_DIM}$*${C_RST}"; }
 
-if [[ ! -f "$ENV_FILE" ]]; then
+require() {
+  local cmd="$1" hint="$2"
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    fail "$cmd is required but not on PATH. $hint"
+    exit 1
+  fi
+}
+
+mode="${1:-install}"
+case "$mode" in
+  install|--check|--reset-topics) ;;
+  -h|--help)
+    sed -n '2,7p' "$0" | sed 's/^# //; s/^#//'
+    exit 0
+    ;;
+  *)
+    fail "Unknown arg: $mode (try --help)"; exit 2
+    ;;
+esac
+
+# --- prereqs ---------------------------------------------------------- #
+require python3 "Install Python 3.6+ (macOS ships with one)."
+require openssl "Install openssl (used to generate random topic names)."
+
+if ! python3 -c 'import sys; assert sys.version_info >= (3,6)' 2>/dev/null; then
+  fail "Python 3.6+ required, got $(python3 --version 2>&1)"; exit 1
+fi
+
+if [[ ! -d "$CLAUDE_DIR" ]]; then
+  warn "$CLAUDE_DIR does not exist. Have you run \`claude\` at least once?"
+  if [[ "$mode" == install ]]; then
+    note "Creating it now."
+    mkdir -p "$CLAUDE_DIR"
+  fi
+fi
+
+# --- check mode ------------------------------------------------------- #
+if [[ "$mode" == --check ]]; then
+  echo "${C_BOLD}claude-ntfy-hook · status${C_RST}"
+  echo
+
+  if [[ -L "$SCRIPT_LINK" ]]; then
+    target="$(readlink "$SCRIPT_LINK")"
+    if [[ "$target" == "$SCRIPT_SRC" ]]; then
+      ok "hook symlinked: $SCRIPT_LINK -> $target"
+    else
+      warn "hook symlink points elsewhere: $target (expected $SCRIPT_SRC)"
+    fi
+  elif [[ -f "$SCRIPT_LINK" ]]; then
+    warn "hook is a copy (not a symlink) at $SCRIPT_LINK — re-run install.sh to switch to a symlink"
+  else
+    fail "hook not installed at $SCRIPT_LINK"
+  fi
+
+  if [[ -f "$ENV_FILE" ]]; then
+    ok "topics file present: $ENV_FILE"
+    grep -q '^export NTFY_PERM_TOPIC=' "$ENV_FILE" || warn "NTFY_PERM_TOPIC not set in $ENV_FILE"
+    grep -q '^export NTFY_RESP_TOPIC=' "$ENV_FILE" || warn "NTFY_RESP_TOPIC not set in $ENV_FILE"
+  else
+    fail "topics file missing: $ENV_FILE"
+  fi
+
+  if [[ -f "$SETTINGS" ]]; then
+    if python3 - "$SETTINGS" <<'PY' >/dev/null 2>&1
+import json, sys
+s = json.load(open(sys.argv[1]))
+hooks = (s.get("hooks") or {}).get("PermissionRequest") or []
+ok = any(
+    "ntfy_permission.py" in (h.get("command", ""))
+    for entry in hooks for h in entry.get("hooks", [])
+)
+sys.exit(0 if ok else 1)
+PY
+    then
+      ok "PermissionRequest hook entry present in $SETTINGS"
+    else
+      warn "no PermissionRequest hook entry pointing at ntfy_permission.py in $SETTINGS"
+      note "see install.sh output for the snippet to merge"
+    fi
+  else
+    warn "$SETTINGS does not exist yet"
+  fi
+
+  if [[ -n "${NTFY_PERM_TOPIC:-}" && -n "${NTFY_RESP_TOPIC:-}" ]]; then
+    ok "env vars exported in this shell (perm=...${NTFY_PERM_TOPIC: -8}, resp=...${NTFY_RESP_TOPIC: -8})"
+  else
+    warn "NTFY_PERM_TOPIC / NTFY_RESP_TOPIC not exported in this shell"
+    note "either source $ENV_FILE or open a new terminal after adding it to your shell rc"
+  fi
+  exit 0
+fi
+
+# --- install mode ----------------------------------------------------- #
+mkdir -p "$SCRIPTS_DIR"
+
+if [[ -L "$SCRIPT_LINK" && "$(readlink "$SCRIPT_LINK")" == "$SCRIPT_SRC" ]]; then
+  ok "hook already symlinked"
+else
+  ln -sf "$SCRIPT_SRC" "$SCRIPT_LINK"
+  chmod +x "$SCRIPT_SRC"
+  ok "symlinked $SCRIPT_LINK -> $SCRIPT_SRC"
+fi
+
+regenerate=false
+[[ "$mode" == --reset-topics ]] && regenerate=true
+[[ ! -f "$ENV_FILE" ]] && regenerate=true
+
+if [[ "$regenerate" == true ]]; then
+  if [[ "$mode" == --reset-topics && -f "$ENV_FILE" ]]; then
+    cp "$ENV_FILE" "$ENV_FILE.bak.$(date +%Y%m%d%H%M%S)"
+    note "backed up old topics to $ENV_FILE.bak.*"
+  fi
   perm="claude-perm-$(openssl rand -hex 12)"
   resp="claude-resp-$(openssl rand -hex 12)"
+  umask 077  # restrict file mode — these are shared secrets on public ntfy.sh
   cat > "$ENV_FILE" <<EOF
+# Auto-generated by claude-ntfy-hook install.sh — do not commit.
+# Topics on public ntfy.sh are unauthenticated; treat these as shared secrets.
 export NTFY_PERM_TOPIC=$perm
 export NTFY_RESP_TOPIC=$resp
 EOF
-  echo "Generated topics in $ENV_FILE"
+  umask 022
+  ok "generated topics in $ENV_FILE"
+else
+  ok "topics file already present at $ENV_FILE"
 fi
 
-cat <<'EOF'
+# load topic values for the next-steps printout
+# shellcheck disable=SC1090
+. "$ENV_FILE"
 
-----------------------------------------------------------------
-Next steps:
+cat <<EOF
 
-1. Subscribe on your phone (ntfy app) to the perm topic in $ENV_FILE.
-   Smoke test from a terminal:
-     . "$ENV_FILE"
-     curl -d "ntfy works" https://ntfy.sh/$NTFY_PERM_TOPIC
+${C_BOLD}Next steps${C_RST}
 
-2. Source the env vars from your shell rc:
-     echo "[ -f $ENV_FILE ] && source $ENV_FILE" >> ~/.zshrc
+  ${C_BOLD}1.${C_RST} Subscribe on your phone (ntfy app) to:
+       topic:  ${C_OK}$NTFY_PERM_TOPIC${C_RST}
+       server: https://ntfy.sh
 
-3. Merge this into ~/.claude/settings.json (under existing 'hooks'):
+     Smoke test from this shell:
+       . "$ENV_FILE"
+       curl -d "ntfy works" "https://ntfy.sh/\$NTFY_PERM_TOPIC"
+
+  ${C_BOLD}2.${C_RST} Source the env vars from your shell rc:
+       echo '[ -f $ENV_FILE ] && source $ENV_FILE' >> ~/.zshrc
+
+  ${C_BOLD}3.${C_RST} Merge this entry into ${C_BOLD}~/.claude/settings.json${C_RST} under "hooks":
 
      "PermissionRequest": [
        {
@@ -53,7 +190,8 @@ Next steps:
        }
      ]
 
-4. Open a new terminal, run `claude`, ask it to do something that needs
-   permission (e.g. write a file under /tmp). Your phone should ping.
-----------------------------------------------------------------
+  ${C_BOLD}4.${C_RST} Open a new terminal, run \`claude\`, ask it to do something that needs
+     permission (e.g. write a file under /tmp). Your phone should ping.
+
+  Run \`./install.sh --check\` anytime to verify install state.
 EOF
